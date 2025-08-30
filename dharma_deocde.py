@@ -29,7 +29,7 @@ if uploaded_files:
         file_type = uploaded_file.type
         text = ""
         if file_type == "application/pdf":
-            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            pdf_reader = pypdf.PdfReader(uploaded_file)
             for page in pdf_reader.pages:
                 page_text = page.extract_text()
                 if page_text:

@@ -1,5 +1,5 @@
 import streamlit as st
-import PyPDF2
+import pypdf
 import docx
 import docx2txt
 import requests

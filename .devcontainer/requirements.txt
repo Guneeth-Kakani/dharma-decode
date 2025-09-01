@@ -1,0 +1,13 @@
+streamlit
+
+pypdf
+
+python-docx
+
+docx2txt
+
+requests
+
+python-dotenv
+
+gTTS

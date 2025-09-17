@@ -1,5 +1,5 @@
 import streamlit as st
-import PyPDF2  # Fixed: Use PyPDF2 instead of pypdf
+import PyPDF2
 import docx
 import requests
 from dotenv import load_dotenv
@@ -7,13 +7,20 @@ import os
 from gtts import gTTS
 import io
 import hashlib
+import google.generativeai as genai
 
 # Load environment variables
 load_dotenv()
-PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-if not PERPLEXITY_API_KEY:
-    st.error("Perplexity API key not found. Please check your .env file.")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    st.error("Gemini API key not found. Please check your .env file.")
     st.stop()
+
+# Configure the Gemini API
+genai.configure(api_key=GEMINI_API_KEY)
+# Initialize the Gemini model
+model = genai.GenerativeModel('gemini-pro')
 
 # Page configuration
 st.set_page_config(page_title="Dharma Decode", page_icon="📜", layout="wide")
@@ -46,7 +53,6 @@ if uploaded_files:
             
             try:
                 if file_type == "application/pdf":
-                    # Fixed: Use PyPDF2.PdfReader instead of pypdf
                     pdf_reader = PyPDF2.PdfReader(uploaded_file)
                     for page in pdf_reader.pages:
                         page_text = page.extract_text()
@@ -64,7 +70,7 @@ if uploaded_files:
                     st.error(f"Unsupported file type: {file_type}")
                     continue
                 
-                if text.strip():  # Only add if there's actual content
+                if text.strip():
                     st.success(f"✅ Uploaded {uploaded_file.name} successfully!")
                     st.session_state['uploaded_files'].append(uploaded_file.name)
                     st.session_state['document_text'] += f"\n--- Content from {uploaded_file.name} ---\n{text}\n"
@@ -100,75 +106,47 @@ if st.session_state['document_text'].strip():
             If you reference specific sections, please quote them briefly.
             """
             
-            headers = {
-                "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            data = {
-                "model": "sonar-pro",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1000,
-                "temperature": 0.1
-            }
-            
             try:
-                response = requests.post(
-                    "https://api.perplexity.ai/chat/completions", 
-                    headers=headers, 
-                    json=data,
-                    timeout=30
-                )
+                response = model.generate_content(prompt)
+                answer = response.text
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        answer = response_data["choices"][0]["message"]["content"]
-                        st.write(f"**🤖 Dharma Decode:** {answer}")
+                st.write(f"**🤖 Dharma Decode:** {answer}")
 
-                        # Text-to-speech functionality
-                        try:
-                            # Generate audio hash for this specific answer
-                            audio_hash = hashlib.md5(answer.encode()).hexdigest()
-                            
-                            # Only generate new audio if it's different from current
-                            if audio_hash != st.session_state.get('current_audio_hash', ''):
-                                tts = gTTS(text=answer, lang="en", slow=False)
-                                buf = io.BytesIO()
-                                tts.write_to_fp(buf)
-                                buf.seek(0)
-                                audio_bytes = buf.getvalue()
-                                
-                                st.session_state['current_audio_hash'] = audio_hash
-                                st.session_state['current_audio_bytes'] = audio_bytes
-                            
-                            # Audio controls
-                            col1, col2 = st.columns([1, 1])
-                            with col1:
-                                if st.button("🔊 Play Audio"):
-                                    st.audio(st.session_state['current_audio_bytes'], format="audio/mpeg")
-                            
-                            with col2:
-                                st.download_button(
-                                    label="📥 Download Audio",
-                                    data=st.session_state['current_audio_bytes'],
-                                    file_name=f"dharma_decode_answer.mp3",
-                                    mime="audio/mpeg",
-                                )
-                                
-                        except Exception as e:
-                            st.warning(f"⚠️ Text-to-speech unavailable: {str(e)}")
-                    else:
-                        st.error("❌ Invalid response format from API")
-                else:
-                    st.error(f"❌ API Error: {response.status_code}")
-                    if response.text:
-                        st.error(f"Details: {response.text}")
+                # Text-to-speech functionality
+                try:
+                    # Generate audio hash for this specific answer
+                    audio_hash = hashlib.md5(answer.encode()).hexdigest()
+                    
+                    # Only generate new audio if it's different from current
+                    if audio_hash != st.session_state.get('current_audio_hash', ''):
+                        tts = gTTS(text=answer, lang="en", slow=False)
+                        buf = io.BytesIO()
+                        tts.write_to_fp(buf)
+                        buf.seek(0)
+                        audio_bytes = buf.getvalue()
                         
-            except requests.exceptions.RequestException as e:
-                st.error(f"❌ Network error: {str(e)}")
+                        st.session_state['current_audio_hash'] = audio_hash
+                        st.session_state['current_audio_bytes'] = audio_bytes
+                    
+                    # Audio controls
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("🔊 Play Audio"):
+                            st.audio(st.session_state['current_audio_bytes'], format="audio/mpeg")
+                    
+                    with col2:
+                        st.download_button(
+                            label="📥 Download Audio",
+                            data=st.session_state['current_audio_bytes'],
+                            file_name=f"dharma_decode_answer.mp3",
+                            mime="audio/mpeg",
+                        )
+                        
+                except Exception as e:
+                    st.warning(f"⚠️ Text-to-speech unavailable: {str(e)}")
+                    
             except Exception as e:
-                st.error(f"❌ Unexpected error: {str(e)}")
+                st.error(f"❌ Unexpected error while calling Gemini API: {str(e)}")
 
 else:
     st.info("📤 Please upload a document to get started.")
